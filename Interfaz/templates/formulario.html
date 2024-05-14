@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formulario</title>
+<link rel="stylesheet" href="../static/style/styles.css">
+<script src="../static/js/formulario.js" defer></script>
+</head>
+<body>
+<h2 style="text-align: center;">FORMULARIO - CONFIGURACIÓN</h2>
+<form id="formulario" action="/guardar" method="post" enctype="multipart/form-data">
+    {% for columna in range(num_columnas) %}
+        <div class="columna">
+            {% for campo in campos[columna:columna+1] %}
+                <div id="campo_{{ campo }}" class="campo">
+                    <label for="{{ campo }}">{{ campo }}:</label><br>
+                    <div class="input-wrapper">
+                        <input type="text" class= "input" id="{{ campo }}" name="{{ campo }}" value="{{ datos[campo].strip('\"') }}"> 
+                        <button type="button" class="eliminar-campo" data-campo="{{ campo }}">X</button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endfor %}
+    <br style="clear:both;">
+    <br>
+    <div class="campo">
+        <label for="archivo">Archivo Excel:</label><br>
+        <input type="file" id="archivo" name="archivo">
+    </div><br>
+    <button type="button" class= "botones" id="btn-nuevo-campo">Añadir nuevo campo</button>
+    <button type="button" class= "botones" id="btn-detalle">Detalle</button>
+    <input type="submit" id= "btn-guardar" class= "botones" value="Guardar"><br><br>
+    <div class="campo" id="nuevo-campo-container" style="display: none;">
+        <label for="nuevo_campo">Nuevo Campo:</label><br>
+        <input class= "nuevo_campo" type="text" id="nuevo_campo" name="nuevo_campo"><br>
+        <label for="nuevo_valor">Nuevo Valor:</label><br>
+        <input class= "nuevo_campo" type="text" id="nuevo_valor" name="nuevo_valor"><br>
+    </div>
+    <div id="detalle-info" style="display:none;">
+        <h2>Configuración (Detalle)</h2>
+        <ul>
+            {% for key, value in datos.items() %}
+                <li>{{ key }}: {{ value }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+</form>
+
+</body>
+</html>
