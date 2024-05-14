@@ -75,4 +75,4 @@ if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         #Se crea la carpeta en caso de que no exista
         os.makedirs(UPLOAD_FOLDER)
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
