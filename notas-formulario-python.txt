@@ -1,0 +1,223 @@
+activar el entorno
+
+.\myenv\Scripts\activate 
+
+
+
+#importaciones
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from cryptography.fernet import Fernet, InvalidToken
+import os
+ 
+# Instancia de flask 
+app = Flask(__name__, static_folder='static')
+app.secret_key = 'llave secreta'
+
+#Donde se le da el nombre de la carpeta, para que alamcene los archivos XLS
+UPLOAD_FOLDER = 'archivos'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ 
+# Función para generar y guardar clave de encriptación si no existe
+def generate_key():
+    return Fernet.generate_key()
+ 
+if not os.path.exists('secret.key'):
+    with open('secret.key', 'wb') as key_file:
+        key_file.write(generate_key())
+ 
+with open('secret.key', 'rb') as key_file:
+    key = key_file.read()
+ 
+cipher_suite = Fernet(key)
+ 
+# Funciones de encriptación y desencriptación
+def encrypt_text(text):
+    return cipher_suite.encrypt(text.encode()).decode()
+ 
+def decrypt_text(encrypted_text):
+    try:
+        return cipher_suite.decrypt(encrypted_text.encode()).decode()
+    except InvalidToken:
+        return None
+ 
+# Función para leer información del usuario desde el archivo
+def read_user_info():
+    users = {}
+    try:
+        with open('usuarios.txt', 'r') as file:
+            for line in file:
+                key, value = line.strip().split(' = ')
+                users[key.strip()] = value.strip().strip("'")
+    except FileNotFoundError:
+        pass
+    return users
+ 
+# Función para encriptar credenciales existentes si no están encriptadas
+def encrypt_existing_credentials():
+    users = read_user_info()
+    file_changed = False
+ 
+    if 'username' in users:
+        decrypted_username = decrypt_text(users['username'])
+        if decrypted_username is None:  # Si no se puede descifrar, significa que no está encriptado
+            encrypted_username = encrypt_text(users['username'])
+            users['username'] = encrypted_username
+            file_changed = True
+ 
+    if 'password' in users:
+        decrypted_password = decrypt_text(users['password'])
+        if decrypted_password is None:  # Si no se puede descifrar, significa que no está encriptado
+            encrypted_password = encrypt_text(users['password'])
+            users['password'] = encrypted_password
+            file_changed = True
+ 
+    if file_changed:
+        with open('usuarios.txt', 'w') as file:
+            for key, value in users.items():
+                file.write(f"{key} = '{value}'\n")
+        print("Credenciales encriptadas y guardadas en 'usuarios.txt'")
+ 
+# Llamar a la función para encriptar credenciales existentes al iniciar la aplicación
+encrypt_existing_credentials()
+
+# Función para verificar si el usuario ha iniciado sesión
+def is_logged_in():
+    return 'username' in session
+ 
+@app.route('/')
+def home():
+    return redirect(url_for('login'))
+ 
+@app.route('/login', methods=['GET', 'POST'])
+#Funcion para iniciar sesion
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        users = read_user_info()
+        stored_username = users.get('username')
+        stored_password = users.get('password')
+        if stored_username and stored_password:
+            decrypted_username = decrypt_text(stored_username)
+            decrypted_password = decrypt_text(stored_password)
+ 
+            # Intentar desencriptar las credenciales
+            if decrypted_username and decrypted_password:
+                stored_username = decrypted_username
+                stored_password = decrypted_password
+ 
+            # Verificar las credenciales
+            if username == stored_username and password == stored_password:
+                session['username'] = username
+                # Si las credenciales no estaban encriptadas, encriptarlas y guardarlas
+                if not decrypted_username or not decrypted_password:
+                    users['username'] = encrypt_text(username)
+                    users['password'] = encrypt_text(password)
+                    with open('usuarios.txt', 'w') as file:
+                        for key, value in users.items():
+                            file.write(f"{key} = '{value}'\n")
+                    print("Credenciales encriptadas y actualizadas en 'usuarios.txt'")
+ 
+                return redirect(url_for('formulario'))
+            else:
+                flash('Usuario o contraseña incorrectos.', 'danger')
+        else:
+            flash('Error en la configuración de usuarios.', 'danger')
+    return render_template('login.html')
+ 
+@app.route('/logout', methods=['POST'])
+#Funcion para cerrar sesion
+def logout():
+    if is_logged_in():
+        session.pop('username', None)
+        flash('Sesión cerrada exitosamente.', 'success')
+    return redirect(url_for('login'))
+ 
+@app.route('/formulario')
+def formulario():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+    campos, datos = leer_datos('informacion.txt')
+    num_columnas = len(campos) // 1 + len(campos) % 2
+    return render_template('formulario.html', campos=campos, datos=datos, num_columnas=num_columnas)
+ 
+@app.route('/guardar', methods=['POST'])
+def guardar():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+    datos_actuales = {}
+    for campo in request.form:
+        if campo != 'nuevo_campo' and campo != 'nuevo_valor' and campo != 'eliminar_campo':
+            valor = request.form[campo]
+            # Si el valor es un número, lo convierte a int, si no, lo deja como string
+            if valor.isdigit():
+                datos_actuales[campo] = int(valor)
+            else:
+                datos_actuales[campo] = valor
+
+    # Obtiene el campo que se desea eliminar
+    campo_a_eliminar = request.form.get('eliminar_campo')
+    if campo_a_eliminar:
+        #Elimina el campo del diccionario si existe
+        datos_actuales.pop(campo_a_eliminar, None)
+    # Abre el archivo 'informacion.txt' en modo escritura para guardar los datos actuales
+    with open('informacion.txt', 'w') as file:
+        for campo, valor in datos_actuales.items():
+            if isinstance(valor, int):
+                file.write(f"{campo} = {valor}\n")
+            else:
+                file.write(f"{campo} = \"{valor}\"\n")
+    nuevo_campo = request.form.get('nuevo_campo', '').strip()
+    nuevo_valor = request.form.get('nuevo_valor', '').strip()
+    if nuevo_campo and nuevo_valor:
+        # Si el valor es un número, lo convierte a int, si no, lo deja como string
+        if nuevo_valor.isdigit():
+            datos_actuales[nuevo_campo] = int(nuevo_valor)
+        else:
+            datos_actuales[nuevo_campo] = nuevo_valor
+    with open('informacion.txt', 'w') as file:
+        for campo, valor in datos_actuales.items():
+            if isinstance(valor, int):
+                file.write(f"{campo} = {valor}\n")
+            else:
+                file.write(f"{campo} = \"{valor}\"\n")
+    archivo_adjunto = request.files.get('archivo')
+    if archivo_adjunto:
+        archivo_adjunto.save(os.path.join(app.config['UPLOAD_FOLDER'], archivo_adjunto.filename))
+    return redirect(url_for('formulario'))
+ 
+@app.route('/cambiar_password', methods=['POST'])
+def cambiar_password():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+    nueva_password = request.form['nueva_password']
+    confirm_password = request.form['confirm_password']
+    if nueva_password != confirm_password:
+        flash('Las contraseñas no coinciden.', 'danger')
+        return redirect(url_for('formulario'))
+    users = read_user_info()
+    users['password'] = encrypt_text(nueva_password)
+    with open('usuarios.txt', 'w') as file:
+        for key, value in users.items():
+            file.write(f"{key} = '{value}'\n")
+    flash('Contraseña cambiada exitosamente.', 'success')
+    return redirect(url_for('formulario'))
+ 
+def leer_datos(archivo):
+    campos = []
+    datos = {}
+    with open(archivo, 'r') as file:
+        for line in file:
+            key, value = line.strip().split(' = ')
+            campos.append(key.strip())
+            datos[key.strip()] = value.strip()
+    return campos, datos
+ 
+if __name__ == '__main__':
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+# En Windows - para activar el entorno
+# .\venv\Scripts\activate
+# pip install -r requirements.txt
